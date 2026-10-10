@@ -38,7 +38,11 @@ export async function handleIngest(req: Request, getDbFn: () => Db): Promise<Res
   } catch (err) {
     // Surface the real reason (param limits, timeouts, bad data) instead of a blank
     // 500, so failures are diagnosable from the app's response and the Vercel logs.
-    const message = err instanceof Error ? err.message : "persist failed";
+    // Prefer the database driver's own error (the `cause`): Drizzle's wrapper
+    // message embeds the full query parameters, i.e. raw health values, which
+    // should not be copied into hosting logs. Cap the length as well.
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
+    const message = (cause?.message ?? (err instanceof Error ? err.message.split("\nparams:")[0] : "persist failed")).slice(0, 300);
     console.error("[ingest] persist error:", message);
     return Response.json({ error: "ingest failed", detail: message }, { status: 500 });
   }

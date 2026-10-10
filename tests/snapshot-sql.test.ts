@@ -34,6 +34,11 @@ describe("health_sql guard", () => {
   it("allows a WITH/CTE select", () => {
     expect(() => assertReadOnly("WITH x AS (SELECT 1) SELECT * FROM x")).not.toThrow();
   });
+  // Documents the known gap that keeps health_sql out of the MCP route: a
+  // data-modifying CTE starts with WITH and passes this keyword-only guard.
+  it("does NOT catch a data-modifying CTE (why the tool is disabled)", () => {
+    expect(() => assertReadOnly("WITH d AS (DELETE FROM workouts RETURNING 1) SELECT count(*) FROM d")).not.toThrow();
+  });
   it("rejects INSERT", () => {
     expect(() => assertReadOnly("INSERT INTO metric_samples DEFAULT VALUES")).toThrow();
   });

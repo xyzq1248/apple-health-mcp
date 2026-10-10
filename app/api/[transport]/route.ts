@@ -42,13 +42,14 @@ const handler = createMcpHandler((server) => {
     { title: "Latest snapshot", description: "Most recent value for every metric — a quick current-status overview.", inputSchema: {} },
     async () => ok(await latestSnapshot(getDb())));
 
-  server.registerTool("health_sql",
-    { title: "Read-only SQL", description: "Run a single read-only SELECT/WITH query over tables: metric_samples, workouts, health_events.",
-      inputSchema: { query: z.string() } },
-    async ({ query }) => {
-      try { return ok(await healthSql(getDb(), query)); }
-      catch (e) { return fail(e instanceof Error ? e.message : "query failed"); }
-    });
+  // health_sql is deliberately NOT exposed. Its read-only check only looks at the
+  // first keyword, and Postgres allows data-modifying CTEs such as
+  // `WITH d AS (DELETE FROM metric_samples RETURNING 1) SELECT count(*) FROM d`,
+  // which pass that check and would delete health data. The five tools above
+  // cover weekly summaries. To re-enable it, first point it at a database role
+  // that has SELECT privileges only.
+  void healthSql;
+  void fail;
 }, undefined, {
   // basePath MUST match where the [transport] segment is mounted, else the handler
   // 404s every request. Our route lives at app/api/[transport]/route.ts → "/api".

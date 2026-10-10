@@ -91,11 +91,26 @@ export function exchangeCode(params: {
   if (params.redirect_uri && p.ru && params.redirect_uri !== p.ru) return { error: "invalid_grant" };
   const cc = typeof p.cc === "string" ? p.cc : "";
   const ccm = typeof p.ccm === "string" ? p.ccm : "S256";
-  if (cc) {
-    if (!params.code_verifier) return { error: "invalid_grant" };
-    if (!verifyPkce(params.code_verifier, cc, ccm)) return { error: "invalid_grant" };
-  }
+  // PKCE is mandatory: Claude always sends an S256 challenge, so a code minted
+  // without one (or with the weaker "plain" method) is refused.
+  if (!cc || ccm !== "S256") return { error: "invalid_grant" };
+  if (!params.code_verifier) return { error: "invalid_grant" };
+  if (!verifyPkce(params.code_verifier, cc, ccm)) return { error: "invalid_grant" };
   return { access_token: issueAccessToken(), expires_in: ACCESS_TTL_S };
+}
+
+// Redirect allowlist. Without it, anyone could build an /authorize link that sends
+// the freshly minted code to their own site, then trick the owner into typing the
+// secret on it. Only Claude's documented callbacks are accepted:
+// - hosted apps (claude.ai web, Desktop, mobile): https://claude.ai/api/mcp/auth_callback
+// - Claude Code: a loopback redirect on any port, http://localhost:<port>/callback
+//   or http://127.0.0.1:<port>/callback
+// Source: https://claude.com/docs/connectors/building/authentication#callback-urls
+export function redirectAllowed(u: URL): boolean {
+  if (u.username || u.password) return false;
+  if (u.protocol === "https:" && u.host === "claude.ai" && u.pathname === "/api/mcp/auth_callback") return true;
+  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1") && u.pathname === "/callback") return true;
+  return false;
 }
 
 // Public base URL of the deployment, derived from forwarded headers (Vercel) so the

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import crypto from "node:crypto";
 import {
   sign, verify, verifyPkce, issueCode, issueAccessToken,
-  validateAccessToken, exchangeCode, nowSec,
+  validateAccessToken, exchangeCode, nowSec, redirectAllowed,
 } from "@/lib/oauth";
 
 beforeEach(() => { process.env.MCP_SECRET = "s3cr3t"; });
@@ -81,5 +81,32 @@ describe("exchangeCode", () => {
   it("rejects an access token presented as a code", () => {
     const r = exchangeCode({ grant_type: "authorization_code", code: issueAccessToken(), code_verifier: verifier });
     expect(r).toEqual({ error: "invalid_grant" });
+  });
+  it("rejects a code minted without a PKCE challenge", () => {
+    const code = issueCode({ cc: "", ccm: "S256", ru: "https://c/cb", cid: "c1" });
+    const r = exchangeCode({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: "https://c/cb" });
+    expect(r).toEqual({ error: "invalid_grant" });
+  });
+  it("rejects the plain PKCE method", () => {
+    const code = issueCode({ cc: verifier, ccm: "plain", ru: "https://c/cb", cid: "c1" });
+    const r = exchangeCode({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: "https://c/cb" });
+    expect(r).toEqual({ error: "invalid_grant" });
+  });
+});
+
+describe("redirectAllowed", () => {
+  const ok = (s: string) => redirectAllowed(new URL(s));
+  it("accepts Claude's hosted callback and loopback callbacks on any port", () => {
+    expect(ok("https://claude.ai/api/mcp/auth_callback")).toBe(true);
+    expect(ok("http://localhost:3118/callback")).toBe(true);
+    expect(ok("http://127.0.0.1:51234/callback")).toBe(true);
+  });
+  it("rejects anything else", () => {
+    expect(ok("https://evil.example/api/mcp/auth_callback")).toBe(false);
+    expect(ok("https://claude.ai.evil.example/api/mcp/auth_callback")).toBe(false);
+    expect(ok("http://claude.ai/api/mcp/auth_callback")).toBe(false);
+    expect(ok("https://claude.ai/other")).toBe(false);
+    expect(ok("https://user:pw@claude.ai/api/mcp/auth_callback")).toBe(false);
+    expect(ok("http://localhost.evil.example/callback")).toBe(false);
   });
 });

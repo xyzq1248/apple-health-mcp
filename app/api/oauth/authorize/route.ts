@@ -1,5 +1,6 @@
 import { requireEnv } from "@/lib/env";
-import { issueCode } from "@/lib/oauth";
+import { issueCode, redirectAllowed } from "@/lib/oauth";
+import { safeEqual } from "@/lib/auth";
 
 // Authorization endpoint. Because this is a single-user server, "logging in" =
 // proving you hold the secret. GET renders a password form (carrying the OAuth
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   const get = (k: string) => (form.get(k)?.toString() ?? "");
   const values = Object.fromEntries(PARAMS.map((p) => [p, get(p)]));
 
-  if (get("secret") !== requireEnv("MCP_SECRET")) {
+  if (!safeEqual(get("secret"), requireEnv("MCP_SECRET"))) {
     return page(values, "Incorrect secret. Try again.");
   }
 
@@ -55,8 +56,8 @@ export async function POST(req: Request) {
   } catch {
     return page(values, "Invalid redirect_uri.");
   }
-  if (target.protocol !== "https:" && target.protocol !== "http:") {
-    return page(values, "Unsupported redirect_uri scheme.");
+  if (!redirectAllowed(target)) {
+    return page(values, "This redirect_uri is not allowed. Only Claude's own callback URLs are accepted.");
   }
 
   const code = issueCode({

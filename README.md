@@ -50,17 +50,24 @@ Local MCP servers can't reach claude.ai web/mobile, so this one is remote.
 
 ## Auth model
 
-- **Claude Code / ingest** use the static `MCP_SECRET` as a bearer (or `?key=`).
+- **Claude Code / ingest** use the static `MCP_SECRET` as an `Authorization: Bearer`
+  header. Secrets in the URL (`?key=`) are no longer accepted.
 - **claude.ai web/mobile/desktop** require OAuth, so the server ships a minimal,
-  stateless OAuth 2.1 layer (discovery, dynamic client registration, PKCE). The
+  stateless OAuth 2.1 layer (discovery, dynamic client registration, S256 PKCE). The
   `/authorize` step is gated by `MCP_SECRET` (entered as a password), so only the
   secret-holder can mint a token. Codes and tokens are HMAC-signed — no DB, no deps.
+- Codes are only sent to Claude's documented callbacks
+  (`https://claude.ai/api/mcp/auth_callback`, or a `localhost` / `127.0.0.1`
+  `/callback` loopback for Claude Code). Any other `redirect_uri` is refused.
 
 ## Security notes
 
 - Treat `MCP_SECRET` like a password: it's the ingest bearer *and* the OAuth login.
-- For extra `health_sql` safety, point `DATABASE_URL` at a Postgres role granted
-  only `SELECT`, or keep a separate read-only role for production.
+- Access tokens last 90 days and there are no refresh tokens: reconnect the
+  connector when it expires. Rotating `MCP_SECRET` revokes every token at once
+  (then update the Health Auto Export header too).
+- `health_sql` is not exposed as a tool: its keyword check can be bypassed with a
+  data-modifying CTE. Re-enable it only behind a Postgres role granted `SELECT` only.
 - Custom Connectors require a paid Claude plan (Pro/Max/Team/Enterprise).
 
 ## Limitations
